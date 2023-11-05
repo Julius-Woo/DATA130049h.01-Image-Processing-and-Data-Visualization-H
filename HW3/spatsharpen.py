@@ -30,9 +30,9 @@ def sharpen_masking(img, factor):
     Returns:
         - img_sharpened: the sharpened image
     '''
-    import smoothen
+    import spatsmoothen
     
-    blurred_img = smoothen.smooth_gauss(img, 5)
+    blurred_img = spatsmoothen.smooth_gauss(img, 5)
     mask = img - blurred_img
     img_sharpened = img + factor * mask
     img_sharpened = np.clip(img_sharpened, 0, 255)
