@@ -1,0 +1,84 @@
+\documentclass[UTF8]{ctexart}
+\ctexset { section = { format={\Large \bfseries } } }
+\pagestyle{plain}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{listings}
+\usepackage{graphicx}%插入图片宏包
+\usepackage{xcolor}
+\usepackage{geometry}
+\geometry{a4paper,scale=0.8}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage[colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue]{hyperref}
+\captionsetup[figure]{name={Figure}}
+\captionsetup[table]{name={Table}}
+\definecolor{Rhodamine}{RGB}{227,11,92}
+
+
+\lstset{
+language=Python, % 设置语言
+basicstyle=\ttfamily\small, % 设置字体族
+breaklines=true, % 自动换行
+keywordstyle=\bfseries\color{blue}, % 设置关键字为粗体，
+morekeywords={}, % 设置更多的关键字，用逗号分隔
+emph={self}, % 指定强调词，如果有多个，用逗号隔开
+emphstyle=\bfseries\color{Rhodamine}, % 强调词样式设置
+commentstyle=\color{black!50!white}, % 设置注释样式，斜体，浅灰色
+stringstyle=\bfseries\color{red!90!black}, % 设置字符串样式
+columns=flexible,
+numbers=left, % 显示行号在左边
+numbersep=2em, % 设置行号的具体位置
+numberstyle=\footnotesize, % 缩小行号
+frame=single, % 边框
+framesep=1em % 设置代码与边框的距离
+}
+
+\title{\textbf{Image Processing Homework 6}}
+\author{吴嘉骜 21307130203}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\noindent
+\section{}
+\setlength{\parindent}{0pt}
+实现K类均值分类的分割算法或基于高斯混合模型的分割算法（备注：二选一就行，不可以调用别的库实现的函数），并使用噪声污染过的图像（如P=0.1%的椒盐噪声）测试一下算法：
+
+（1）测试二类分割，并对比自己实现的算法的分割结果与阈值算法（如OSTU或基于最大熵）二值化的结果；
+
+（2）测试多类（大于等于三类）分割（请自己设定分割标签类别的个数）；
+
+（3）针对噪声图像，讨论为什么分割的结果不准确，有什么方法可以取得更好的分割结果（备注：不要求实现该方法，只是讨论）。
+
+
+\textbf{Solution}:\\
+The code from \texttt{freqfilter.py} is long and thus shown in the \hyperlink{code1}{Appendix}.\\
+
+
+For Gaussian noise, we directly generate normal distribution random numbers by \texttt{np.random.normal}.\\
+For Rayleigh noise, we generate random numbers by the inverse transform method. Note that the cumulative distribution function of Rayleigh distribution is
+$F(z;a,b)=1-e^{-\frac{(z-a)^2}{2b^2}}$, where $a$ is the location parameter and $b$ is the scale parameter. Let $u$ be a uniform random variable in $[0,1]$, then $F^{-1}(u;a,b)=a+b\sqrt{-2\ln(1-u)}$.\\
+Thus, we can generate Rayleigh distribution random numbers by applying $F^{-1}$ to uniform random numbers.\\
+For salt-and-pepper noise, we determine the polluting probability by comparing $u$ with a preset threshold $p$.\\
+
+\textbf{Analysis}:\\
+
+
+\section{}
+请使用课程学习的形态学操作实现二值图像的补洞和离散点去除。形态学操作功能要自己代码实现，不能调用库。如下左图是有问题图像，右图是目标图像。
+\textbf{Solution}:\\
+
+
+\newpage
+\appendix
+\hypertarget{code1}{\section{Code for Problem 1}}
+\begin{lstlisting}
+from PIL import Image
+import numpy as np
+\end{lstlisting}
+
+\end{document}
