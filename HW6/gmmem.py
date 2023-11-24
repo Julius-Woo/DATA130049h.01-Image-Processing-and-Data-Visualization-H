@@ -51,17 +51,14 @@ class Gmmem():
                         ).reshape(self.shape[0], self.shape[1])
         return mask
 
-    def segmentation(self, max_iter=30, tol=1e-3):
+    def segmentation(self, max_iter, tol):
         # Perform segmentation on the image, alternatively perform E-step and M-step
         m = 0  # Number of iterations
         while True:
             P = self.E_step()  # E-step: Calculate posterior probabilities
             # M-step: Update model parameters
             new_paras = self.M_update_paras(P)
-            # if ((new_paras - self.paras) < tol).all:
-            #     print('gmm Converged! Number of iteration: ', m)
-            #     break
-            if np.sqrt(np.sum((new_paras - self.paras)**2)) < tol:
+            if (abs(new_paras - self.paras) < tol).all():
                 print('gmm Converged! Number of iteration: ', m)
                 break
             elif m > max_iter:
@@ -97,7 +94,7 @@ class Gmmem():
         new_paras[2][new_paras[2] < 1] = np.random.randint(1, 10, 1)  # Avoid zero variance
         return new_paras
     
-    def create_newimg(self, max_iter=30, tol=1e-3):
+    def create_newimg(self, max_iter=50, tol=1):
         # Create a new image based on the labels
         labels = self.segmentation(max_iter, tol)
         new_img = np.zeros(self.shape, dtype=np.uint8)
@@ -128,7 +125,7 @@ def initialize_paras(img, k):
 # img = img_read('./heart_noised.png')
 # height, width = img.shape
 # gmm = Gmmem(img, k, initialize_paras(img, k))
-# labels = gmm.segmentation()
+# labels = gmm.segmentation(50,1)
 # # Create a colored image based on labels
 # img_new = np.zeros((height, width, 3), dtype=np.uint8)
 # colors = np.array([[228, 143, 18], [4, 135, 158], [129, 254, 177]])
@@ -137,10 +134,10 @@ def initialize_paras(img, k):
 # show_img_colour(img_new)
 # # save_img(img_new, './heart_gmm3.png')
 
-# # more than 2 classes
-# k = 5
-# img = img_read('./heart_noised.png')
-# gmm = Gmmem(img, k, initialize_paras(img, k))
-# img_new = gmm.create_newimg()
-# show_img_gray(img_new)
-# # save_img(img_new, './heart_gmm5.png')
+# more than 2 classes
+k = 5
+img = img_read('./HW6/heart_noised.png')
+gmm = Gmmem(img, k, initialize_paras(img, k))
+img_new = gmm.create_newimg()
+show_img_gray(img_new)
+# save_img(img_new, './heart_gmm5.png')

@@ -157,8 +157,7 @@ We test the $\textit{K-means}$ and $\textit{GMMEM}$ segmentation on an image pol
 \textbf{Analysis}:\\
 (1) For binary segmentation, I find that the segmentation result of $\textit{K-means}$ is similar to that of Otsu's method, whereas the performance of $\textit{GMMEM}$ is not as optimal as the other two,
 because it tends to segment the main part of the heart as a single class, which deviates from our desired outcome. Also, running $\textit{GMMEM}$
-is rather slow and seems not to converge within maximum iterations.
-The conditions for covergence may be a little strict. 
+is rather slow. I relaxed the conditions for covergence to speed up the process, and the algorithm converged after around 25 iterations.\\
 
 (2) In multi-class segmentation, the performance of $\textit{GMMEM}$ surpasses that of $\textit{K-means}$. 
 The processed image is much closer to the original, but there is still room for improvement due to the presence of unremoved noise.
@@ -295,6 +294,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from kmeansimg import kmeans
 
+
 class Gmmem():
     def __init__(self, img, k, paras):
         self.img = img  # Image to be segmented
@@ -320,17 +320,14 @@ class Gmmem():
                         ).reshape(self.shape[0], self.shape[1])
         return mask
 
-    def segmentation(self, max_iter=30, tol=1e-3):
+    def segmentation(self, max_iter, tol):
         # Perform segmentation on the image, alternatively perform E-step and M-step
         m = 0  # Number of iterations
         while True:
             P = self.E_step()  # E-step: Calculate posterior probabilities
             # M-step: Update model parameters
             new_paras = self.M_update_paras(P)
-            # if ((new_paras - self.paras) < tol).all:
-            #     print('gmm Converged! Number of iteration: ', m)
-            #     break
-            if np.sqrt(np.sum((new_paras - self.paras)**2)) < tol:
+            if (abs(new_paras - self.paras) < tol).all():
                 print('gmm Converged! Number of iteration: ', m)
                 break
             elif m > max_iter:
@@ -360,12 +357,13 @@ class Gmmem():
         new_paras = np.zeros(self.paras.shape)
         new_paras[1] = np.array(
             [np.sum(P[i] * self.img.reshape(-1)) / np.sum(P[i]) for i in range(self.num)])
-        new_paras[2] = np.array([np.sum(P[i] * (self.img.reshape(-1) - new_paras[1][i]) ** 2) / np.sum(P[i]) for i in range(self.num)])
+        new_paras[2] = np.array([np.sum(P[i] * (self.img.reshape(-1) - new_paras[1][i]) ** 2) / np.sum(P[i])
+                                for i in range(self.num)])
         new_paras[0] = np.sum(P, -1) / np.sum(P)
         new_paras[2][new_paras[2] < 1] = np.random.randint(1, 10, 1)  # Avoid zero variance
         return new_paras
     
-    def create_newimg(self, max_iter=30, tol=1e-3):
+    def create_newimg(self, max_iter=50, tol=1):
         # Create a new image based on the labels
         labels = self.segmentation(max_iter, tol)
         new_img = np.zeros(self.shape, dtype=np.uint8)
