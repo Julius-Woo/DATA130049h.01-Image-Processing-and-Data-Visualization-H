@@ -134,10 +134,10 @@ def initialize_paras(img, k):
 # show_img_colour(img_new)
 # # save_img(img_new, './heart_gmm3.png')
 
-# more than 2 classes
-k = 5
-img = img_read('./HW6/heart_noised.png')
-gmm = Gmmem(img, k, initialize_paras(img, k))
-img_new = gmm.create_newimg()
-show_img_gray(img_new)
-# save_img(img_new, './heart_gmm5.png')
+# # more than 2 classes
+# k = 5
+# img = img_read('./heart_noised.png')
+# gmm = Gmmem(img, k, initialize_paras(img, k))
+# img_new = gmm.create_newimg()
+# show_img_gray(img_new)
+# # save_img(img_new, './heart_gmm5.png')
