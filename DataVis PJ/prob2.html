@@ -1,0 +1,593 @@
+<!DOCTYPE HTML>
+<meta charset="utf-8">
+<title>黑网吧可视分析系统</title>
+<html>
+
+<head>
+    <!-- 引入字体style文件 -->
+    <link rel="stylesheet" type="text/css"
+        href="http://fonts.googleapis.com/css?family=Source+Sans+Pro:400italic,600italic,700italic,200,300,400,600,700,900">
+    <!-- 引入d3.js v7版本；-->
+    <script src="d3.v7.min.js"></script>
+    <script src="plot.js"></script>
+
+    <style>
+        /* 设置各级标题style */
+        body,
+        h1,
+        h2,
+        h3,
+        p {
+            margin: 2;
+            padding: 0;
+            font-family: 'Georgia', fangsong;
+            font-size: 1em;
+            color: #333;
+            font-weight: 400;
+        }
+
+        h1 {
+            line-height: 0.6em;
+            font-size: 1.5em;
+            font-weight: 900;
+            color: #000;
+        }
+
+        h2 {
+            line-height: 0.5em;
+            font-size: 1.25em;
+            font-weight: 900;
+            color: #111111d1;
+        }
+
+        /* 设置各版块位置 */
+        /* 容器样式 */
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+
+        #mappart {
+            flex: 1 1 55%;
+            height: 375px;
+            margin: 5px;
+            padding: 10px;
+            border: 1px solid transparent;
+            box-sizing: border-box;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+
+
+        #agepart {
+            flex: 1 1 40%;
+            height: 375px;
+            margin: 5px;
+            padding: 10px;
+            border: 1px solid transparent;
+            box-sizing: border-box;
+        }
+
+        #agedonut {
+            height: 100%;
+            width: 100%;
+        }
+
+        #durationpart {
+            flex: 1 1 45%; 
+            height: 275px;
+            margin: 5px;
+            padding: 10px;
+            border: 1px solid transparent;
+            box-sizing: border-box;
+        }
+
+        #onlineduration {
+            height: 100%;
+            width: 100%;
+        }
+
+        #onlinetimepart {
+            flex: 1 1 48%;
+            height: 275px;
+            margin: 5px;
+            padding: 10px;
+            border: 1px solid transparent;
+            box-sizing: border-box;
+        }
+
+        #onlinetime {
+            height: 100%;
+            width: 100%;
+        }
+
+
+        #legend text {
+            font-size: 0.9em;
+            color: #333;
+            font-weight: 400;
+        }
+
+        /* 提示框 */
+        .tooltip {
+            position: absolute;
+            padding: 7px;
+            font-size: 0.9em;
+            pointer-events: none;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+
+            /* 添加阴影效果 */
+            -moz-box-shadow: 3px 3px 10px 0px rgba(0, 0, 0, 0.25);
+            -webkit-box-shadow: 3px 3px 10px 0px rgba(0, 0, 0, 0.25);
+            box-shadow: 3px 3px 10px 0px rgba(0, 0, 0, 0.25);
+        }
+
+        .tooltip p {
+            margin: 0;
+            padding: 0;
+        }
+
+        .tooltip table {
+            margin: 0;
+            padding: 0;
+            border-collapse: collapse;
+        }
+
+        .wide {
+            width: 140px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>重庆市网吧可视分析系统——流动人口分析</h1>
+    <div class="container">
+        <div id="mappart">
+            <h2>流动人口籍贯分布</h2>
+            <div id="map"></div>
+        </div>
+
+        <div id="agepart">
+            <h2>流动人口年龄分布</h2>
+            <div id="agedonut"></div>
+        </div>
+
+        <div id="durationpart">
+            <h2>流动人口上网时长分布</h2>
+            <div id='onlineduration'></div>
+        </div>
+
+        <div id="onlinetimepart">
+            <h2>流动人口上网情况</h2>
+            <div id="onlinecalendar"></div>
+            <div id="onlineradius"></div>
+        </div>
+    </div>
+
+    <script type='text/javascript'>
+        let margin = { top: 20, right: 20, bottom: 20, left: 20 };
+
+
+        // 导入数据
+        let filePromises = [];
+        filePromises.push(d3.json("china.json"));
+            filePromises.push(d3.json("chongqing.json"));
+            filePromises.push(d3.csv("./newdata/intcafe.csv"));
+            filePromises.push(d3.csv(`./newdata/dailycounts.csv`));
+            filePromises.push(d3.csv(`./newdata/hourlycounts.csv`));
+        for (let i = 0; i <= 4; i++) { // 未加载全部数据，可改为<=16, 但是加载时间会很长
+                if (i == 2) continue;
+                filePromises.push(d3.csv(`./newdata/hydata_swjl_${i}.csv`));
+            }
+
+        Promise.all(filePromises).then(function (loadData) {
+            let china = loadData[0];
+            let cq = loadData[1];
+            let cafe = loadData[2];
+            let dailyCounts = loadData[3];
+            let hourlyCounts = loadData[4];
+            let rc = loadData.slice(5).reduce((acc, data) => acc.concat(data), []);  // records记录
+        
+            // 提取流动人口
+            let migrants = rc.filter(d => d['ISLOCAL'] == '0');
+
+
+            // 地图部分
+            // 计算各省份流动人口数量
+            let provinceCounts = d3.rollups(migrants, v => v.length, d => d.PROVINCE)
+                .map(([province, count]) => ({ province, count }));
+
+            function heatMap(data) {
+                let width = 550;
+                let height = 375;
+
+                // 创建SVG容器
+                let svg = d3.select("#map")
+                    .append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+                // 创建投影
+                let projection = d3.geoMercator()
+                    .translate([width / 2, height / 2])
+                    .fitSize([width * 1.1, height * 1.1], china);
+
+                // 创建地理路径生成器
+                let path = d3.geoPath().projection(projection);
+
+                // 定义颜色比例尺
+                let colorScale = d3.scaleThreshold()
+                    .domain([5000, 10000, 15000, 20000, 25000, 30000, 50000, 100000, 200000])
+                    .range(d3.schemeReds[9]);
+
+
+                // 创建工具提示元素
+                let tooltip = d3.select("body").append("div")
+                    .attr("class", "tooltip")
+                    .style("opacity", 0)
+                    .style("position", "absolute")
+                    .style("background-color", "white")
+                    .style("padding", "5px")
+                    .style("border", "1px solid black")
+                    .style("border-radius", "5px")
+                    .style("pointer-events", "none");
+
+                // 绘制省份，并添加鼠标事件监听器
+                svg.selectAll(".province")
+                    .data(china.features)
+                    .enter().append("path")
+                    .attr("class", "province")
+                    .attr("stroke", "#ccc")
+                    .attr("stroke-width", 1)
+                    .attr("d", path)
+                    .attr("fill", d => {
+                        let province = provinceCounts.find(p => p.province === d.properties.fullname);
+                        return province ? colorScale(province.count) : "#ccc";
+                    })
+                    .on("mouseover", function (event, d) {
+                        let provinceData = provinceCounts.find(p => p.province === d.properties.fullname);
+                        tooltip.transition()
+                            .duration(200)
+                            .style("opacity", .7);
+                        tooltip.html("省份：" + d.properties.name + "<br/>" +
+                            "在渝流动人口数量：" + (provinceData ? provinceData.count : 0) + "<br/>")
+                            .style("left", (event.pageX + 15) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function () {
+                        tooltip.transition()
+                            .duration(500)
+                            .style("opacity", 0)
+                    })
+                    .on("click", function (event, d) {
+                        // 过滤出点击的省份对应的数据
+                        let filteredData = migrants.filter(m => m.PROVINCE === d.properties.fullname);
+
+                        // 使用过滤后的数据更新视图
+                        onlineDuration(filteredData);
+                        ageDonut(filteredData);
+                    });
+                // 图例尺寸和位置设置
+                let legendWidth = 350, legendHeight = 15, legendMargin = 10;
+                let legendItemWidth = legendWidth / colorScale.range().length;
+
+                // 创建图例分组
+                let legend = svg.append("g")
+                    .attr("id", "legend")
+                    .attr("transform", `translate(20, ${legendHeight + legendMargin})`);
+
+                // 添加颜色矩形
+                colorScale.range().forEach((color, index) => {
+                    legend.append("rect")
+                        .attr("x", index * legendItemWidth)
+                        .attr("width", legendItemWidth)
+                        .attr("height", legendHeight)
+                        .style("fill", color);
+                });
+
+                // 添加文本标签
+                colorScale.domain().forEach((threshold, index) => {
+                    legend.append("text")
+                        .attr("x", index * legendItemWidth)
+                        .attr("y", legendHeight + legendMargin)
+                        .text(threshold)
+                        .style("font-size", "10px")
+                        .style("text-anchor", "start");
+                });
+
+            };
+
+            // 环图部分
+            function ageDonut(data) {
+                d3.select('#agedonut svg').remove();
+                // 根据年龄分组
+                let ageGroups = data.map(d => {
+                    if (d.AGE < 18) return "18岁以下";
+                    else if (d.AGE <= 25) return "18-25岁";
+                    else if (d.AGE <= 35) return "25-35岁";
+                    else if (d.AGE <= 60) return "35-60岁";
+                    else return "60岁以上";
+                });
+
+                // 计算每个年龄组的人数
+                let ageCounts = Array.from(d3.group(ageGroups, d => d), ([age, group]) => ({ age, count: group.length }));
+                
+                ageCounts.forEach(group => {
+                    group.percentage = (group.count / data.length * 100).toFixed(2) + '%';
+                });
+
+                // 获取容器的宽度和高度
+                let width = 400;
+                let height = 375;
+                let radius = Math.min(width, height) / 3;
+
+                // 创建SVG容器
+                let svg = d3.select("#agedonut")
+                    .append("svg")
+                    .attr("width", width)
+                    .attr("height", height)
+                    .append("g")
+                    .attr("transform", `translate(${width / 2}, ${height / 2})`);
+
+                // 创建颜色比例尺
+                let color = d3.scaleOrdinal(d3.schemeCategory10);
+
+                // 创建环形图生成器
+                let pie = d3.pie().value(d => d.count);
+                let data_ready = pie(ageCounts);
+
+                // 构建环形图的路径
+                let arcGenerator = d3.arc()
+                    .innerRadius(radius * 0.45)
+                    .outerRadius(radius * 0.8);
+
+                // 构建环形图
+                svg.selectAll('mySlices')
+                    .data(data_ready)
+                    .join('path')
+                    .transition()
+                    .duration(1000)
+                    .attrTween('d', function (d) {
+                        const i = d3.interpolate(d.startAngle + 0.1, d.endAngle);
+                        return function (t) {
+                            d.endAngle = i(t);
+                            return arcGenerator(d);
+                        };
+                    })
+                    .attr('fill', d => color(d.data.age))
+                    .attr("stroke", "white")
+                    .style("stroke-width", "2px")
+                    .style("opacity", 0.7);
+
+                // 添加图例
+                let legendXOffset = width / 8;
+                let legendYOffset = -height / 2;
+                let legend = svg.selectAll(".legend")
+                    .data(ageCounts)
+                    .enter().append("g")
+                    .attr("class", "legend")
+                    .attr("transform", function (d, i) { return `translate(${legendXOffset}, ${legendYOffset + i * 20})`; });
+
+                legend.append("rect")
+                    .attr("x", 0)
+                    .transition()
+                    .duration(1000)
+                    .attr("width", 18)
+                    .attr("height", 18)
+                    .style("fill", d => color(d.age));
+
+                legend.append("text")
+                    .attr("x", 22)
+                    .attr("y", 9)
+                    .attr("dy", ".35em")
+                    .style("text-anchor", "start")
+                    .transition()
+                    .duration(1000)
+                    .text(d => `${d.age}: ${d.percentage}`);
+            }
+
+            // 上网时长分布部分
+            function onlineDuration(data) {
+                d3.select('#onlineduration svg').remove();
+                // 初始化SVG尺寸和边距
+                const width = 500;
+                const height = 250;
+
+                // 创建SVG容器
+                const svg = d3.select("#onlineduration").append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                // 处理数据：按性别和时长分组
+                const durationBins = Array.from({ length: 13 }, (_, i) => i); // 0-12小时
+                const genderCategories = ['男', '女'];
+                const groupedData = [];
+
+                for (let bin = 0; bin <= 12; bin++) {
+                    genderCategories.forEach(gender => {
+                        let count;
+                        if (bin < 12) {
+                            count = data.filter(d => d.XB === gender && Math.floor(d.DURATION) === bin).length;
+                        } else {
+                            count = data.filter(d => d.XB === gender && Math.floor(d.DURATION) >= bin).length;
+                        }
+                        groupedData.push({ gender, duration: bin, count });
+                    });
+                }
+
+                // 创建x轴比例尺
+                const x0 = d3.scaleBand()
+                    .rangeRound([0, width])
+                    .paddingInner(0.1)
+                    .domain(groupedData.map(d => d.duration));
+
+                const x1 = d3.scaleBand()
+                    .padding(0.05)
+                    .domain(['男', '女'])
+                    .rangeRound([0, x0.bandwidth()]);
+
+                // 添加x轴
+                svg.append("g")
+                    .attr("class", "x axis")
+                    .attr("transform", `translate(0,${height})`)
+                    .call(d3.axisBottom(x0));
+                
+                // 创建y轴比例尺
+                const maxYValue = d3.max(groupedData, d => d.count);
+                const minYValue = d3.min(groupedData, d => d.count);
+                const y = d3.scaleLinear()
+                    .rangeRound([height, 0])
+                    .domain([minYValue-100, maxYValue]);
+
+                // 添加y轴
+                svg.append("g")
+                    .attr("class", "y axis")
+                    .call(d3.axisLeft(y).tickFormat(""));
+
+                // 绘制柱状图
+                svg.append("g")
+                    .selectAll("g")
+                    .data(groupedData)
+                    .enter().append("g")
+                    .attr("transform", d => `translate(${x0(d.duration)},0)`)
+                    .selectAll("rect")
+                    .data(d => [d])
+                    .enter().append("rect")
+                    .attr("x", d => x1(d.gender))
+                    .attr("width", x1.bandwidth())
+                    .attr("y", height)
+                    .attr("height", 0)
+                    .attr("fill", d => d.gender === '男' ? "#1f77b4" : "#ff7f0e")
+                    .transition()
+                    .duration(1000)
+                    .attr("y", d => y(d.count))
+                    .attr("height", d => height - y(d.count));
+
+                // 添加数据标签
+                svg.append("g")
+                    .selectAll("g")
+                    .data(groupedData)
+                    .enter().append("g")
+                    .attr("transform", d => `translate(${x0(d.duration)},0)`)
+                    .selectAll("text")
+                    .data(d => [d])
+                    .enter().append("text")
+                    .attr("x", d => x1(d.gender) + x1.bandwidth() / 2)
+                    .attr("y", height)
+                    .text(d => d.count)
+                    .attr("text-anchor", "middle")
+                    .attr("fill", "black")
+                    .attr("font-size", "10px")
+                    .transition()
+                    .duration(1000)
+                    .attr("y", d => y(d.count) - 5);
+
+                // 添加颜色图例
+                const legend = svg.append("g")
+                    .attr("class", "legend")
+                    .attr("transform", `translate(${width - 100},20)`)
+                    .selectAll("g")
+                    .data(genderCategories)
+                    .enter().append("g");
+
+                legend.append("rect")
+                    .attr("x", 0)
+                    .attr("y", (d, i) => i * 20)
+                    .attr("width", 18)
+                    .attr("height", 18)
+                    .style("fill", d => d === '男' ? "#1f77b4" : "#ff7f0e");
+
+                legend.append("text")
+                    .attr("x", 24)
+                    .attr("y", (d, i) => i * 20 + 9)
+                    .attr("dy", ".35em")
+                    .text(d => d);
+            }
+
+
+            // 上网时间分布部分
+            // 绘制日历图
+            // 创建颜色比例尺
+            let onlinetimecolor = d3.scaleThreshold()
+                .domain([10000, 11000, 13000, 15000, 19000, 21000, 23000, 25000])
+                .range(d3.schemeBlues[9]);
+            function calendarPlot(data) {
+                const calendarPlot = Plot.plot({
+                    x: { axis: null },
+                    y: { tickFormat: Plot.formatWeekday("en", "narrow"), tickSize: 0 },
+                    fy: { tickFormat: "", reverse: true },
+                    color: {
+                        scheme: "Reds",
+                        legend: true
+                    },
+                    marks: [
+                        Plot.cell(data, {
+                            x: d => d3.timeWeek.count(d3.timeYear(new Date(d.ONLINETIME)), new Date(d.ONLINETIME)),
+                            y: d => new Date(d.ONLINETIME).getDay(),
+                            fy: d => new Date(d.ONLINETIME).getFullYear(),
+                            fill: d => onlinetimecolor(d.count),
+                            title: d => `${d.ONLINETIME}: ${d.count} 人`,
+                            inset: 0.5
+                        })
+                    ]
+                });
+                return calendarPlot;
+            }
+
+            function drawLegend(svg, colorScale) {
+                const legendWidth = 300; // 图例的总宽度
+                const legendHeight = 10; // 图例的高度
+                const legendMargin = { top: 0, right: 0, bottom: 0, left: 10 }; // 图例的边距
+
+                // 创建图例容器
+                const legend = svg.append('g')
+                    .attr('class', 'legend')
+                    .attr('transform', `translate(${legendMargin.left},${legendMargin.top})`);
+
+                // 获取颜色比例尺的域
+                const domain = colorScale.domain();
+
+                // 计算每个图例项的宽度
+                const itemWidth = legendWidth / (domain.length + 1);
+
+                // 添加颜色矩形
+                domain.forEach((threshold, index) => {
+                    legend.append('rect')
+                        .attr('x', index * itemWidth)
+                        .attr('width', itemWidth)
+                        .attr('height', legendHeight)
+                        .attr('fill', colorScale(threshold));
+                });
+
+                // 添加颜色边界值的文本
+                domain.forEach((threshold, index) => {
+                    legend.append('text')
+                        .attr('x', index * itemWidth + itemWidth / 2)
+                        .attr('y', legendHeight + 13)
+                        .attr('text-anchor', 'middle')
+                        .text(threshold);
+                });
+            }
+            // 生成并添加日历图到页面元素
+            document.getElementById('onlinecalendar').appendChild(calendarPlot(dailyCounts));
+            d3.select('#onlinecalendar svg').call(drawLegend, onlinetimecolor);
+
+            // 调用函数，创建图表
+            heatMap(provinceCounts);
+            onlineDuration(migrants);
+            ageDonut(migrants);
+        });
+
+    </script>
+</body>
+
+<html>

@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>重庆市网吧可视分析系统</title>
+<html>
+
+<head>
+    <!-- 引入字体style文件 -->
+    <link rel="stylesheet" type="text/css"
+        href="http://fonts.googleapis.com/css?family=Source+Sans+Pro:400italic,600italic,700italic,200,300,400,600,700,900">
+    <!-- 引入d3.js v7版本；-->
+    <script src="d3.v7.min.js"></script>
+    <!-- 引入百度地图API -->
+    <script type="text/javascript"
+        src="https://api.map.baidu.com/api?v=1.0&type=webgl&ak=Xad8IDfGmQrYVCvIpOYtpahjjpr7pG1n"></script>
+    <style>
+        /* 设置各级标题style */
+        body,
+        h1,
+        h2,
+        h3,
+        p {
+            margin: 0;
+            padding: 0;
+            font-family: 'Georgia', fangsong;
+            font-size: 1em;
+            color: #333;
+            font-weight: 400;
+        }
+
+        h1 {
+            line-height: 1em;
+            font-size: 1.75em;
+            font-weight: 900;
+            color: #000;
+            margin-bottom: 0.5em;
+        }
+
+        h2 {
+            line-height: 1em;
+            font-size: 1.45em;
+            font-weight: 900;
+            color: #111111d1;
+            margin: 0.5em 0.5em;
+        }
+
+        /* 设置各版块位置 */
+        /* 容器样式 */
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+
+        /* 地图部分样式 */
+        #mappart {
+            flex: 1 1 55%;
+            height: 400px;
+            margin: 5px;
+            padding: 10px;
+            border: 1px solid transparent;
+            box-sizing: border-box;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+
+        /* 记录部分样式 */
+        #recordpart {
+            flex: 0 1 43%; /* 宽度调整为占据右侧较小空间，留出间隙 */
+            height: 400px;
+            margin: 5px;
+            padding: 10px;
+            border: 1px solid transparent;
+            box-sizing: border-box;
+        }
+
+        #recordlist {
+            height: 100%;
+            width: 100%;
+        }
+
+        /* 年龄分布饼图样式 */
+        #agepart {
+            flex: 1 1 20%;
+            height: 300px;
+            margin: 5px;
+            padding: 10px;
+            border: 1px solid transparent;
+            box-sizing: border-box;
+        }
+
+        #agepie {
+            height: 100%;
+            width: 100%;
+        }
+
+        /* 上网时段折线图样式 */
+        #onlinetimepart {
+            flex: 1 1 35%;
+            height: 300px;
+            margin: 5px;
+            padding: 10px;
+            border: 1px solid transparent;
+            box-sizing: border-box;
+        }
+
+        #onlinetime {
+            height: 100%;
+            width: 100%;
+        }
+
+        /* 外来人口省份条形图样式 */
+        #provincepart {
+            flex: 1 1 35%;
+            height: 300px;
+            margin: 5px;
+            padding: 10px;
+            border: 1px solid transparent;
+            box-sizing: border-box;
+        }
+
+        #provincebar {
+            height: 100%;
+            width: 100%;
+        }
+
+        /* 设置图例样式 */
+        #legend text {
+            font-size: 0.9em;
+            color: #333;
+            font-weight: 400;
+        }
+
+        /* 设置分页按钮样式 */
+        .pagination {
+        text-align: center;
+        margin-top: 20px;
+        }
+
+        .page-btn {
+            margin: 0 5px;
+            padding: 5px 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #dcdcdc;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .page-btn:hover {
+            background-color: #e9e9e9;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div id="mappart">
+            <h1>重庆市网吧可视分析系统</h1>
+            <div id="map"></div>
+        </div>
+
+        <div id="recordpart">
+            <h2>疑似未成年人上网记录</h2>
+            <div id="recordlist"></div>
+        </div>
+
+        <div id="agepart">
+            <h2>未成年人年龄分布</h2>
+            <div id='agepie'></div>
+        </div>
+
+        <div id="onlinetimepart">
+            <h2>未成年人上网高峰时段</h2>
+            <div id="onlinetime"></div>
+        </div>
+
+        <div id="provincepart">
+            <h2>流动人口未成年人籍贯省份分布</h2>
+            <div id="provincebar"></div>
+        </div>
+    </div>
+
+    
+    <script>
+        // 创建地图实例
+        let map = new BMapGL.Map("map", {
+                enableRotate: false,
+                enableTilt: false
+            });
+            let point = new BMapGL.Point(106.551, 29.563); // 创建点坐标
+            map.centerAndZoom(point, 13); // 初始化地图，设置中心点坐标和地图级别
+            map.enableScrollWheelZoom(true); // 开启鼠标滚轮缩放
+            map.setMapStyleV2({ styleId: 'd940a82487bfa8f4b6ce4ba9f5a6a035' });
+
+        filePromises = []; // 用于存储所有的文件promise
+        filePromises.push(d3.csv("./newdata/intcafecount.csv"));
+        filePromises.push(d3.csv("./newdata/underage.csv"));
+        filePromises.push(d3.csv('newdata/uni_under.csv'));
+        filePromises.push(d3.csv('newdata/under_notlocal.csv'));
+
+        Promise.all(filePromises).then(function (files) {
+            let cafe = files[0];
+            let under_rc = files[1];
+            let uni_under = files[2];
+            let under_notlocal = files[3];
+            let true_under = under_rc.filter(d => d.UNDERAGE == 1);
+
+            let colorScale = d3.scaleThreshold()
+                .domain([300, 500, 750, 1000, 2000, 3000, 4000, 5000])
+                .range(d3.schemeReds[9]);
+            
+                let tooltip = d3.select("body").append("div")
+                .attr("class", "tooltip")
+                .style("opacity", 0);
+                
+            // 绘制地图
+            function drawMap(csvData) { 
+                let maxCount = d3.max(csvData, d => d.count);
+                
+                csvData.forEach(function (data) {
+                    if (data.count > 0) {
+                        let point = new BMapGL.Point(data.lng, data.lat); // 创建点坐标
+                        let circle;
+                        let color;
+                        if (data.UNDERAGE1 > 0) {
+                            color = '#0000ff'; // 蓝色  
+                        } else if (data.UNDERAGE1 === 0 && data.IL === 1) {
+                            color = '#ffff00'; // 黄色  
+                        } else {
+                            color = '#ff0000'; // 红色  
+                        }
+                        
+                        circle = new BMapGL.Circle(point, data.count/maxCount * 20, {
+                            strokeColor: color,
+                            strokeWeight: 2,
+                            fillColor: color,
+                            map: map
+                            }); 
+                        map.addOverlay(circle); 
+                        circle.addEventListener('mouseover', function (e) {
+                            // 创建 InfoWindow 实例  
+                            let opts = {
+                                width: 200,   // 信息窗口宽度
+                                height: 100,    // 信息窗口高度
+                                title: "网吧信息"  // 信息窗口标题
+                            }
+                            let infoWindow = new BMapGL.InfoWindow("<p><b>网吧名称：" + data.TITLE + "</b></p>" +
+                                "<p>网吧记录数：" + data.count + "</p>" +
+                                "<p>未成年人记录数：" + data.UNDERAGE1 + "</p>" +
+                                "<p>未成年人记录占比：" + (data.UNDERAGE1 / data.count * 100).toFixed(2) + "%</p>", opts);
+
+                            // 显示 InfoWindow  
+                            map.openInfoWindow(infoWindow, map.getCenter());   
+                        });
+                        circle.addEventListener('click', function(){
+                            let selectedSiteData = under_rc.filter(d => d.SITEID === data.SITEID);
+                            let selectedTrueUnder = true_under.filter(d => d.SITEID === data.SITEID);
+                            let selectedUni = uni_under.filter(d => d.SITEID === data.SITEID);
+                            let selectedUnderNotLocal = under_notlocal.filter(d => d.SITEID === data.SITEID);
+
+                            // 用筛选出的数据更新其它视图
+                            createTable(selectedSiteData);
+                            drawPie(selectedUni);
+                            drawLine(selectedTrueUnder);
+                            drawBar(selectedUnderNotLocal);
+
+                        })
+                    }
+                });
+            }
+
+            // 创建表格
+            function createTable(data, currentPage = 1, recordsPerPage = 10, maxRecords = 90) {
+                // 字段名映射
+                d3.select('#recordlist').html('');
+                const fieldMapping = {
+                    SITEID: '网吧ID',
+                    TITLE: '网吧名称',
+                    XB: '性别',
+                    CUSTOMERNAME: '姓名',
+                    AGE: '年龄',
+                    DURATION: '上网时长',
+                    PROVINCE: '户籍省份'
+                };
+
+                // 筛选和准备数据
+                const filteredData = data.slice(0, maxRecords);
+                const totalPages = Math.ceil(filteredData.length / recordsPerPage);
+                const startIndex = (currentPage - 1) * recordsPerPage;
+                const endIndex = startIndex + recordsPerPage;
+                const dataToShow = filteredData.slice(startIndex, endIndex);
+
+                // 清除旧表格和分页
+                d3.select('#recordlist').html('');
+
+                // 创建新表格
+                const table = d3.select('#recordlist').append('table');
+                table.append('thead').append('tr')
+                    .selectAll('th')
+                    .data(Object.values(fieldMapping))
+                    .enter()
+                    .append('th')
+                    .text(d => d);
+
+                const tbody = table.append('tbody');
+
+                // 插入数据
+                const rows = tbody.selectAll('tr')
+                    .data(dataToShow)
+                    .enter()
+                    .append('tr');
+
+                rows.selectAll('td')
+                    .data(row => Object.keys(fieldMapping).map(key => row[key]))
+                    .enter()
+                    .append('td')
+                    .text(d => d);
+
+                // 添加分页
+                const pagination = d3.select('#recordlist').append('div').attr('class', 'pagination');
+
+                for (let i = 1; i <= totalPages; i++) {
+                    pagination.append('button')
+                        .attr('class', 'page-btn')
+                        .text(i)
+                        .on('click', () => createTable(data, i));
+                }
+            }
+
+            // 创建年龄分布饼图
+            function drawPie(data) {
+                d3.select('#agepie svg').remove();
+                
+                const outerRadius = 120;
+                const innerRadius = 35;
+                const width = 350;
+                const height =275;
+
+                // 计算年龄分布
+                const ageCounts = d3.rollup(data, v => v.length, d => d.AGE);
+                const formattedData = Array.from(ageCounts, ([age, count]) => ({ age, count }));
+
+                // 创建弧形生成器
+                const arc = d3.arc()
+                    .innerRadius(innerRadius)
+                    .outerRadius(outerRadius);
+
+                // 创建饼图布局
+                const pie = d3.pie()
+                    .value(d => d.count);
+
+                // 创建颜色比例尺
+                const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+                // 创建SVG元素
+                const svg = d3.select("#agepie").append("svg")
+                    .attr("width", width)
+                    .attr("height", height)
+                    .append("g")
+                    .attr("transform", `translate(${outerRadius},${outerRadius})`);
+
+                // 设置弧形组
+                const arcs = svg.selectAll("g.arc")
+                    .data(pie(formattedData))
+                    .enter()
+                    .append("g")
+                    .attr("class", "arc");
+
+                // 绘制弧形路径
+                arcs.append("path")
+                    .attr("fill", (d, i) => color(i))
+                    .transition()
+                    .duration(1000)
+                    .attrTween("d", d => {
+                        const interpolate = d3.interpolate({ startAngle: d.startAngle, endAngle: d.startAngle }, d);
+                        return t => arc(interpolate(t));
+                    });
+
+                // 确保 ageColorMap 作为颜色比例尺的域，并用于图例项的数据
+                const ageToCountMap = new Map(formattedData.map(d => [d.age, d.count]));
+                const ageColorMap = formattedData.map(d => d.age);
+                color.domain(ageColorMap);
+
+                // 添加图例
+                const legend = svg.selectAll(".legend")
+                    .data(ageColorMap)  // 使用年龄到颜色的映射作为数据
+                    .enter().append("g")
+                    .attr("class", "legend")
+                    .attr("transform", (d, i) => `translate(0,${(i * 20) - outerRadius / 2})`)
+                    .style("opacity", 0);
+
+                // 图例动画
+                legend.transition()
+                    .duration(500)
+                    .delay((d, i) => 700 + i * 40) // 每个图例项延迟不同
+                    .style("opacity", 1);
+
+                legend.append("rect")
+                    .attr("x", outerRadius * 1.5 + 35)
+                    .attr("width", 18)
+                    .attr("height", 18)
+                    .style("fill", color);
+
+                legend.append("text")
+                    .attr("x", outerRadius * 1.5 + 30)
+                    .attr("y", 9)
+                    .attr("dy", ".35em")
+                    .style("text-anchor", "end")
+                    .text(d => `${d}岁: ${ageToCountMap.get(d)}人`);
+            }
+            
+
+            // 创建上网时段折线图
+            function drawLine(data) {
+                d3.select('#onlinetime svg').remove();
+                
+                // 提取小时和计算每小时的上网人数
+                const countsPerHour = Array.from({ length: 24 }, () => 0);
+                data.forEach(d => {
+                    const hour = new Date(d.ONLINETIME).getHours();
+                    countsPerHour[hour]++;
+                });
+
+                // 设置SVG尺寸和边距
+                const margin = { top: 10, right: 10, bottom: 30, left: 50 },
+                    width = 425 - margin.left - margin.right,
+                    height = 275 - margin.top - margin.bottom;
+
+                // 设置x轴和y轴比例尺
+                const x = d3.scaleLinear().domain([0, 23]).range([0, width]);
+                const y = d3.scaleLinear().domain([0, d3.max(countsPerHour)]).range([height, 0]);
+
+                // 创建SVG元素
+                const svg = d3.select("#onlinetime").append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                // 定义线生成器
+                const line = d3.line()
+                    .x((d, i) => x(i))
+                    .y(d => y(d));
+
+                // 绘制x轴和y轴
+                svg.append("g")
+                    .attr("transform", `translate(0,${height})`)
+                    .call(d3.axisBottom(x).ticks(24));
+
+                svg.append("g")
+                    .call(d3.axisLeft(y));
+
+                // 绘制线并添加动画
+                const path = svg.append("path")
+                    .datum(countsPerHour)
+                    .attr("fill", "none")
+                    .attr("stroke", "steelblue")
+                    .attr("stroke-width", 1.5)
+                    .attr("d", line);
+
+                const totalLength = path.node().getTotalLength();
+
+                path
+                    .attr("stroke-dasharray", totalLength + " " + totalLength)
+                    .attr("stroke-dashoffset", totalLength)
+                    .transition()
+                    .duration(1000)
+                    .attr("stroke-dashoffset", 0);
+
+                // 添加点并添加动画
+                svg.selectAll(".dot")
+                    .data(countsPerHour.map((count, hour) => ({ hour, count })))
+                    .enter().append("circle")
+                    .attr("class", "dot")
+                    .attr("cx", d => x(d.hour))
+                    .attr("cy", d => y(d.count))
+                    .attr("r", 0)
+                    .attr("fill", "steelblue")
+                    .transition()
+                    .duration(800)
+                    .delay((d, i) => 800 + i * 25) // 每个点的延迟递增
+                    .attr("r", 5);
+
+                const focusText = svg.append("text")
+                    .style("opacity", 0)
+                    .attr("text-anchor", "middle")
+                    .attr("alignment-baseline", "middle")
+                    .attr("font-weight", "bold")
+                    .style("font-size", "14px")
+                    .style("fill", "red");
+
+                // 为点添加鼠标事件
+                svg.selectAll(".dot")
+                    .on("mouseover", (event, d) => {
+                        focusText.html(`${d.hour}时: ${d.count}人`)
+                            .attr("x", x(d.hour) - 10)
+                            .attr("y", y(d.count) + 20)
+                            .style("opacity", 1);
+                    })
+                    .on("mouseout", () => focusText.style("opacity", 0));
+            }
+
+            // 创建籍贯省份分布条形图
+            function drawBar(data) {
+                d3.select('#provincebar svg').remove();
+                // 计算每个省份的数量
+                const provinceCounts = d3.rollup(data, v => v.length, d => d.PROVINCE);
+                const formattedData = Array.from(provinceCounts, ([province, count]) => ({ province, count }));
+
+                // 对数据进行排序并选取前10
+                formattedData.sort((a, b) => b.count - a.count);
+                const topProvinces = formattedData.slice(0, 10);
+
+                // 设置SVG尺寸
+                const margin = { top: 20, right: 30, bottom: 40, left: 90 };
+                const width = 400 - margin.left - margin.right;
+                const height = 275 - margin.top - margin.bottom;
+
+                // 创建SVG元素
+                const svg = d3.select("#provincebar").append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                // 创建Y轴比例尺
+                const y = d3.scaleBand()
+                    .range([0, height])
+                    .domain(topProvinces.map(d => d.province))
+                    .padding(0.1);
+
+                // 创建X轴比例尺
+                const x = d3.scaleLinear()
+                    .domain([0, d3.max(topProvinces, d => d.count)])
+                    .range([0, width]);
+
+                // 绘制条形并添加动画
+                svg.selectAll("myRect")
+                    .data(topProvinces)
+                    .enter()
+                    .append("rect")
+                    .attr("y", d => y(d.province))
+                    .attr("x", 0)
+                    .attr("height", y.bandwidth())
+                    .attr("fill", "steelblue")
+                    .transition()
+                    .duration(800)
+                    .attr("width", d => x(d.count));
+
+                // 在条形上添加数量标记并添加动画
+                svg.selectAll("myText")
+                    .data(topProvinces)
+                    .enter()
+                    .append("text")
+                    .text(d => d.count)
+                    .attr("y", d => y(d.province) + y.bandwidth() / 2)
+                    .attr("x", 0)
+                    .attr("text-anchor", "start")
+                    .attr('font-size', '9px')
+                    .attr("alignment-baseline", "middle")
+                    .attr("font-weight", "bold")
+                    .transition()
+                    .duration(800)
+                    .attr("x", d => x(d.count) + 5);
+
+               // 添加X轴
+                const xAxis = svg.append("g")
+                    .attr("transform", `translate(0,${height})`)
+                    .call(d3.axisBottom(x));
+
+                // 调整X轴标签样式
+                xAxis.selectAll("text")
+                    .style("text-anchor", "end")
+                    .attr("dx", "-.8em")
+                    .attr("dy", ".15em")
+                    .attr("transform", "rotate(-45)") // 将标签旋转-45度
+                    .style("font-size", "10px")
+                    .attr("font-weight", "bold");
+
+                // 添加Y轴
+                const yAxis = svg.append("g").call(d3.axisLeft(y));
+
+                // 调整Y轴标签样式
+                yAxis.selectAll("text")
+                    .style("font-size", "10px")
+                    .attr("font-weight", "bold");
+            }
+
+            // 初始调用函数
+            drawMap(cafe);
+            createTable(under_rc);
+            drawPie(uni_under);
+            drawLine(true_under);
+            drawBar(under_notlocal);
+            
+        });
+        
+    </script>
+</body>
+
+</html>
